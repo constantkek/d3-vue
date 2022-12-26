@@ -1,6 +1,7 @@
 <template>
     <div class="statistics">
         <span>Последний промежуток: </span>
+        <button @click="onButtonClick(1)">День</button>
         <button @click="onButtonClick(7)">Неделя</button>
         <button @click="onButtonClick(31)">Месяц</button>
         <button @click="onButtonClick(365)">Год</button>
@@ -40,6 +41,7 @@ interface ComponentData {
     },
     width: number,
     height: number,
+    startDate?: Date,
 }
 
 type D3Selection = d3.Selection<any, any, any, any>;
@@ -65,10 +67,12 @@ export default defineComponent({
             },
             width: 1400,
             height: 450,
+            startDate: undefined,
         };
     },
     mounted() {
         this.data = PARSED_DATA;
+        this.startDate = this.data[0].date;
         this.init();
     },
     methods: {
@@ -98,19 +102,20 @@ export default defineComponent({
                         .classed('copy', d => d !== 1);
                 });
             this.xAxis?.attr('transform', `translate(${this.margin.left + this.xBandwidth / 2},${this.height})`);
-            this.xAxis?.select('.domain').attr('d', `M${0 - this.xBandwidth / 2},0H${this.width + this.xBandwidth / 2}`);
             const [firstDate, lastDate] = this.x.domain();
             const diff = +lastDate - +firstDate;
-            this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).tickFormat((d: Date) => {
-                if (diff > MONTH_IN_MILLISECONDS) return moment(d).locale('ru-RU').format('DD.MM.YYYY');
-                if (diff > DAY_IN_MILLISECONDS) return moment(d).locale('ru-RU').format('Do MMM hh:mm');
-                return moment(d).locale('ru-RU').format('hh:mm');
+            this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.ticksCount).tickFormat((d: Date) => {
+                debugger;
+                if (diff >= 1.5 * MONTH_IN_MILLISECONDS) return moment(d).locale('ru-RU').format('MM.YYYY');
+                if (diff >= 1.5 * DAY_IN_MILLISECONDS) return moment(d).locale('ru-RU').format('DD.MM');
+                return moment(d).locale('ru-RU').format('HH:mm');
             }));
+            this.xAxis?.select('.domain').attr('d', `M${0 - this.xBandwidth / 2},0H${this.width + this.xBandwidth / 2}`);
         },
         renderBars(): void {
             const t = d3.transition().duration(500);
             this.barChart?.selectAll('.bar')
-                .data(this.data, (data: StatisticsDatum) => data.date)
+                .data(this.data.filter(d => d.date <= new Date()), (data: StatisticsDatum) => data.date)
                 .join(
                     enter => enter.append('rect').classed('bar', true).attr('y', this.height).attr('x', data => this.x(data.date)),
                     update => update,
@@ -121,19 +126,21 @@ export default defineComponent({
                     .attr('height', data => this.height - this.y(data.upper))
                     .attr('x', (elem) => this.x(elem.date))
                     .attr('y', (datum) => this.y(datum.upper))
-                    .attr('fill', '#398ab5'));
+                    .attr('fill', '#6c8191'));
             this.barChart?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);
         },
         renderSlider(): void {
             // todo
         },
         onButtonClick(days: number): void {
+            // filter values between selected date and current date
+            const dateOffset = (24 * 60 * 60 * 1000) * days;
+            const timeAgoDate = new Date();
+            timeAgoDate.setTime(new Date().getTime() - dateOffset);
             this.data = PARSED_DATA.filter((elem: StatisticsDatum) => {
-                const dateOffset = (24 * 60 * 60 * 1000) * days;
-                const timeAgoDate = new Date();
-                timeAgoDate.setTime(new Date().getTime() - dateOffset);
-                return elem.date > timeAgoDate;
+                return elem.date > timeAgoDate && elem.date < new Date();
             });
+            this.startDate = timeAgoDate;
             this.renderBars();
             if (this.data.length) {
                 this.renderAxises();
@@ -141,6 +148,7 @@ export default defineComponent({
         },
         showAll(): void {
             this.data = PARSED_DATA;
+            this.startDate = this.data[0].date;
             this.renderBars();
             this.renderAxises();
         }
@@ -149,26 +157,18 @@ export default defineComponent({
         x(): d3.ScaleTime<number, number, never> {
             return d3.scaleUtc()
                 .range([0, this.width]).nice()
-                .domain(d3.extent(this.data, d => d.date));
+                .domain([this.startDate ?? +new Date() - 1000, new Date()]);
         },
         xBandwidth(): number {
-            let prev: StatisticsDatum | undefined;
-            const minimalDiff = this.data.reduce((acc, elem) => {
-                if (prev) {
-                    const diff = this.x(elem.date) - this.x(prev.date);
-                    if (diff <= acc && diff > 0) {
-                        acc = this.x(elem.date) - this.x(prev.date);
-                    }
-                }
-                prev = elem;
-                return acc;
-            }, 40);
-            return minimalDiff / 2 < 40 ? minimalDiff / 2 : 40; // 40 is maximum bar width
+            return this.width / this.data.length / 2;
         },
         y(): d3.ScaleLinear<number, number, never> {
             return d3.scaleLinear()
                 .range([this.height, this.margin.top]).nice()
                 .domain([0, d3.max(this.data, datum => datum.upper) ?? 1]);
+        },
+        ticksCount(): number {
+            return this.width / 80 > this.data.length ? this.data.length : this.width / 80;
         },
     }
 });

@@ -48,6 +48,7 @@ type D3Selection = d3.Selection<any, any, any, any>;
 const PARSED_DATA = dataJson.map((elem: StatisticsDatum) => ({ ...elem, date: new Date(elem.date) })) as StatisticsDatum[]
 const DAY_IN_MILLISECONDS = 1000 * 60 * 60 * 24;
 const MONTH_IN_MILLISECONDS = DAY_IN_MILLISECONDS * 31;
+const MAXIMUM_BAR_WIDTH = 80;
 
 export default defineComponent({
     name: 'D3Statistics',
@@ -90,30 +91,30 @@ export default defineComponent({
             this.svg = this.svgSelection.node();
         },
         renderAxises(): void {
-            const t = d3.transition().duration(500);
             this.yAxis
                 ?.call(d3.axisLeft(this.y).tickSizeOuter(0).ticks(this.height / 40))
                     .attr('transform', `translate(${this.margin.left},0)`)
                 .call(g => {
-                    g.selectAll(".tick .copy").remove();
-                    g.selectAll(".tick line").clone()
-                        .attr("stroke-opacity", d => d === 1 ? 1 : 0.15)
-                        .attr("x2", this.width)
+                    g.selectAll('.tick .copy').remove();
+                    g.selectAll('.tick line').clone()
+                        .attr('stroke-opacity', d => d === 1 ? 1 : 0.15)
+                        .attr('x2', this.width)
                         .classed('copy', d => d !== 1);
                 });
             this.xAxis?.attr('transform', `translate(${this.margin.left + this.xBandwidth / 2},${this.height})`);
             const [firstDate, lastDate] = this.x.domain();
             const diff = +lastDate - +firstDate;
+            const diffMoreThan45Days = diff >= 1.5 * MONTH_IN_MILLISECONDS;
+            const diffMoreThan36Hours = diff >= 1.5 * DAY_IN_MILLISECONDS;
             this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.ticksCount).tickFormat((d: Date) => {
-                debugger;
-                if (diff >= 1.5 * MONTH_IN_MILLISECONDS) return moment(d).locale('ru-RU').format('MM.YYYY');
-                if (diff >= 1.5 * DAY_IN_MILLISECONDS) return moment(d).locale('ru-RU').format('DD.MM');
+                if (diffMoreThan45Days) return moment(d).locale('ru-RU').format('MM.YYYY');
+                if (diffMoreThan36Hours) return moment(d).locale('ru-RU').format('DD.MM');
                 return moment(d).locale('ru-RU').format('HH:mm');
             }));
             this.xAxis?.select('.domain').attr('d', `M${0 - this.xBandwidth / 2},0H${this.width + this.xBandwidth / 2}`);
         },
         renderBars(): void {
-            const t = d3.transition().duration(500);
+            const t = d3.transition().duration(750).ease(d3.easePoly);
             this.barChart?.selectAll('.bar')
                 .data(this.data.filter(d => d.date <= new Date()), (data: StatisticsDatum) => data.date)
                 .join(
@@ -160,7 +161,18 @@ export default defineComponent({
                 .domain([this.startDate ?? +new Date() - 1000, new Date()]);
         },
         xBandwidth(): number {
-            return this.width / this.data.length / 2;
+            let prev: StatisticsDatum | undefined;
+            const minimalDiff = this.data.reduce((acc, elem) => {
+                if (prev) {
+                    const diff = this.x(elem.date) - this.x(prev.date);
+                    if (diff <= acc && diff > 0) {
+                        acc = this.x(elem.date) - this.x(prev.date);
+                    }
+                }
+                prev = elem;
+                return acc;
+            }, 160);
+            return d3.min([minimalDiff / 2, MAXIMUM_BAR_WIDTH]) ?? MAXIMUM_BAR_WIDTH;
         },
         y(): d3.ScaleLinear<number, number, never> {
             return d3.scaleLinear()
@@ -168,7 +180,7 @@ export default defineComponent({
                 .domain([0, d3.max(this.data, datum => datum.upper) ?? 1]);
         },
         ticksCount(): number {
-            return this.width / 80 > this.data.length ? this.data.length : this.width / 80;
+            return d3.min([this.width / 80, this.data.length]) ?? 1;
         },
     }
 });

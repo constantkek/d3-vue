@@ -49,6 +49,7 @@ const PARSED_DATA = dataJson.map((elem: StatisticsDatum) => ({ ...elem, date: ne
 const DAY_IN_MILLISECONDS = 1000 * 60 * 60 * 24;
 const MONTH_IN_MILLISECONDS = DAY_IN_MILLISECONDS * 31;
 const MAXIMUM_BAR_WIDTH = 80;
+const DEFAULT_TICKS_COUNT = 4;
 
 export default defineComponent({
     name: 'D3Statistics',
@@ -97,7 +98,7 @@ export default defineComponent({
                 .call(g => {
                     g.selectAll('.tick .copy').remove();
                     g.selectAll('.tick line').clone()
-                        .attr('stroke-opacity', d => d === 1 ? 1 : 0.15)
+                        .attr('stroke-opacity', 0.15)
                         .attr('x2', this.width)
                         .classed('copy', d => d !== 1);
                 });
@@ -109,9 +110,13 @@ export default defineComponent({
             this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.ticksCount).tickFormat((d: Date) => {
                 if (diffMoreThan45Days) return moment(d).locale('ru-RU').format('MM.YYYY');
                 if (diffMoreThan36Hours) return moment(d).locale('ru-RU').format('DD.MM');
-                return moment(d).locale('ru-RU').format('HH:mm');
+                return moment(d).locale('ru-RU').calendar({
+                    lastDay: '[Вчера,] HH:mm',
+                    sameDay: '[Сегодня,] HH:mm',
+                    sameElse: 'HH:mm',
+                });
             }));
-            this.xAxis?.select('.domain').attr('d', `M${0 - this.xBandwidth / 2},0H${this.width + this.xBandwidth / 2}`);
+            this.xAxis?.select('.domain').attr('d', `M${0 - this.xBandwidth / 2},0H${this.width - this.xBandwidth / 2}`);
         },
         renderBars(): void {
             const t = d3.transition().duration(750).ease(d3.easePoly);
@@ -143,16 +148,14 @@ export default defineComponent({
             });
             this.startDate = timeAgoDate;
             this.renderBars();
-            if (this.data.length) {
-                this.renderAxises();
-            }
+            this.renderAxises();
         },
         showAll(): void {
             this.data = PARSED_DATA;
             this.startDate = this.data[0].date;
             this.renderBars();
             this.renderAxises();
-        }
+        },
     },
     computed: {
         x(): d3.ScaleTime<number, number, never> {
@@ -180,7 +183,7 @@ export default defineComponent({
                 .domain([0, d3.max(this.data, datum => datum.upper) ?? 1]);
         },
         ticksCount(): number {
-            return d3.min([this.width / 80, this.data.length]) ?? 1;
+            return d3.min([this.width / 80, this.data.length]) || DEFAULT_TICKS_COUNT;
         },
     }
 });

@@ -50,6 +50,7 @@ type D3Selection = d3.Selection<any, any, any, any>;
 const PARSED_DATA = dataJson.map((elem: StatisticsDatum) => ({ ...elem, date: new Date(elem.date) })) as StatisticsDatum[];
 const DAY_IN_MILLISECONDS = 1000 * 60 * 60 * 24;
 const MONTH_IN_MILLISECONDS = DAY_IN_MILLISECONDS * 31;
+const YEAR_IN_MILLISECONDS = DAY_IN_MILLISECONDS * 365;
 const MAXIMUM_BAR_WIDTH = 80;
 
 export default defineComponent({
@@ -69,8 +70,8 @@ export default defineComponent({
                 top: 10,
                 bottom: 30,
             },
-            width: 1400,
-            height: 450,
+            width: 1140,
+            height: 490,
             startDate: undefined,
         };
     },
@@ -101,15 +102,17 @@ export default defineComponent({
                     g.selectAll('.tick .copy').remove();
                     g.selectAll('.tick line').clone()
                         .attr('stroke-opacity', 0.15)
-                        .attr('x2', this.width + this.xBandwidth / 2)
+                        .attr('x2', this.width + this.xBandwidth)
                         .classed('copy', d => d !== 1);
                 });
             this.xAxis?.attr('transform', `translate(${this.margin.left + this.xBandwidth / 2},${this.height})`);
             const [firstDate, lastDate] = this.x.domain();
             const diff = +lastDate - +firstDate;
+            const diffMoreThan5Years = diff >= 5 * YEAR_IN_MILLISECONDS;
             const diffMoreThan45Days = diff >= 1.5 * MONTH_IN_MILLISECONDS;
             const diffMoreThan36Hours = diff >= 1.5 * DAY_IN_MILLISECONDS;
             this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.ticksCount).tickFormat((d: Date) => {
+                if (diffMoreThan5Years) return moment(d).locale('ru-RU').format('YYYY');
                 if (diffMoreThan45Days) return moment(d).locale('ru-RU').format('MM.YYYY');
                 if (diffMoreThan36Hours) return moment(d).locale('ru-RU').format('DD.MM');
                 return moment(d).locale('ru-RU').calendar({

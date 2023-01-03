@@ -152,7 +152,7 @@ export default defineComponent({
             this.tooltip = d3.select('.tooltip');
             this.tooltip.classed('tooltip', true);
         },
-        mouseoverBar(g: any): void {
+        mouseoverBar(): void {
             this.tooltip?.style('display', 'block');
         },
         mousemoveBar(event: MouseEvent): void {
@@ -161,7 +161,7 @@ export default defineComponent({
                 .style('left', (d3.pointer(event, event.target)[0]) - 11 + 'px')
                 .style('top', (d3.pointer(event, event.target)[1] - 25) + 'px')
         },
-        mouseleaveBar(g: any): void {
+        mouseleaveBar(): void {
             this.tooltip?.style('display', 'none');
         },
         onButtonClick(days: number): void {

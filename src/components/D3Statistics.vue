@@ -95,17 +95,18 @@ export default defineComponent({
             this.initTooltip();
         },
         renderAxises(): void {
-            this.yAxis
-                ?.call(d3.axisLeft(this.y).tickSizeOuter(0).ticks(this.height / 40))
+            this.yAxis?.classed('y-axis', true)
+                .call(d3.axisLeft(this.y).tickSizeOuter(0).ticks(this.height / 40))
                     .attr('transform', `translate(${this.margin.left},0)`)
                 .call(g => {
                     g.selectAll('.tick .copy').remove();
                     g.selectAll('.tick line').clone()
                         .attr('stroke-opacity', 0.15)
-                        .attr('x2', this.width + this.xBandwidth)
+                        .attr('x2', this.width)
                         .classed('copy', d => d !== 1);
                 });
-            this.xAxis?.attr('transform', `translate(${this.margin.left + this.xBandwidth / 2},${this.height})`);
+            this.xAxis?.classed('x-axis', true)
+                .attr('transform', `translate(${this.margin.left},${this.height})`);
             const [firstDate, lastDate] = this.x.domain();
             const diff = +lastDate - +firstDate;
             const diffMoreThan5Years = diff >= 5 * YEAR_IN_MILLISECONDS;
@@ -121,7 +122,6 @@ export default defineComponent({
                     sameElse: 'HH:mm',
                 });
             }));
-            this.xAxis?.select('.domain').attr('d', `M${0 - this.xBandwidth / 2},0H${this.width + this.xBandwidth / 2}`);
         },
         renderBars(): void {
             const t = d3.transition().duration(750).ease(d3.easePoly);
@@ -135,7 +135,7 @@ export default defineComponent({
                 .call(rect => rect.transition(t)
                     .attr('width', this.xBandwidth)
                     .attr('height', data => this.height - this.y(data.upper))
-                    .attr('x', (elem) => this.x(elem.date))
+                    .attr('x', (elem) => this.x(elem.date) - this.xBandwidth / 2)
                     .attr('y', (datum) => this.y(datum.upper))
                     .attr('fill', '#6c8191')
                 );
@@ -143,7 +143,7 @@ export default defineComponent({
                 .on('mouseover', this.mouseoverBar)
                 .on('mousemove', this.mousemoveBar)
                 .on('mouseleave', this.mouseleaveBar);
-            this.barChart?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);
+            this.barChart?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);            
         },
         renderSlider(): void {
             // todo
@@ -153,7 +153,7 @@ export default defineComponent({
             this.tooltip.classed('tooltip', true);
         },
         mouseoverBar(g: any): void {
-            this.tooltip?.style('opacity', 1);
+            this.tooltip?.style('display', 'block');
         },
         mousemoveBar(event: MouseEvent): void {
             const data: StatisticsDatum = (event.target as any).__data__;
@@ -162,7 +162,7 @@ export default defineComponent({
                 .style('top', (d3.pointer(event, event.target)[1] - 25) + 'px')
         },
         mouseleaveBar(g: any): void {
-            this.tooltip?.style('opacity', 0)
+            this.tooltip?.style('display', 'none');
         },
         onButtonClick(days: number): void {
             // filter values between selected date and current date
@@ -185,9 +185,10 @@ export default defineComponent({
     },
     computed: {
         x(): d3.ScaleTime<number, number, never> {
-            return d3.scaleUtc()
-                .range([0, this.width]).nice()
+            const xScale = d3.scaleUtc()
+                .range([0, this.width])
                 .domain([this.startDate ?? +new Date() - 1000, new Date()]);
+            return this.data.length > 10 ? xScale : xScale.nice();
         },
         xBandwidth(): number {
             let prev: StatisticsDatum | undefined;
@@ -206,7 +207,7 @@ export default defineComponent({
         },
         y(): d3.ScaleLinear<number, number, never> {
             return d3.scaleLinear()
-                .range([this.height, this.margin.top]).nice()
+                .range([this.height, this.margin.top])
                 .domain([0, d3.max(this.data, datum => datum.upper) ?? 10]);
         },
         ticksCount(): number {
@@ -229,6 +230,7 @@ export default defineComponent({
 }
 .tooltip {
     position: absolute;
+    display: none;
     font-family: 'Roboto';
     font-size: 12px;
     font-weight: 500;
@@ -237,10 +239,15 @@ export default defineComponent({
     background-color: #e8eaed;
     border: 1px solid #aeb6be;
     border-radius: 5px;
-    opacity: 0;
     &-value {
         color: #4fa292;
         font-weight: bold;
+    }
+}
+.x-axis, .y-axis {
+    color: #aeb6be;
+    .tick {
+        color: #6c8290;
     }
 }
 </style>

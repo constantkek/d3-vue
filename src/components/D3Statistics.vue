@@ -7,7 +7,8 @@
         <button @click="onButtonClick(365)">Год</button>
         <button @click="onButtonClick(365 * 2)">2 года</button>
         <button @click="showAll">За всё время</button>
-        <svg></svg>
+        <svg class="chart"></svg>
+        <svg class="slider"></svg>
         <div class="tooltip"></div>
     </div>
 </template>
@@ -17,6 +18,7 @@ import moment from 'moment';
 import * as d3 from 'd3';
 
 import dataJson from '@/assets/aapl-bollinger.json';
+import { BrushBehavior } from 'd3';
 
 interface StatisticsDatum {
     date: Date,
@@ -27,8 +29,8 @@ interface StatisticsDatum {
 }
 
 interface ComponentData {
-    svgSelection?: D3Selection,
-    barChart?: D3Selection,
+    chart?: D3Selection,
+    barsContainer?: D3Selection,
     xAxis?: D3Selection,
     yAxis?: D3Selection,
     slider?: D3Selection,
@@ -42,6 +44,7 @@ interface ComponentData {
     },
     width: number,
     height: number,
+    sliderHeight: number,
     startDate?: Date,
 }
 
@@ -57,8 +60,8 @@ export default defineComponent({
     name: 'D3Statistics',
     data(): ComponentData {
         return {
-            svgSelection: undefined,
-            barChart: undefined,
+            chart: undefined,
+            barsContainer: undefined,
             xAxis: undefined,
             yAxis: undefined,
             slider: undefined,
@@ -71,7 +74,8 @@ export default defineComponent({
                 bottom: 30,
             },
             width: 1140,
-            height: 490,
+            height: 410,
+            sliderHeight: 60,
             startDate: undefined,
         };
     },
@@ -82,13 +86,16 @@ export default defineComponent({
     },
     methods: {
         init(): void {
-            this.svgSelection = d3.select('.statistics svg')
+            this.chart = d3.select('.chart')
                 .attr('width', this.width + this.margin.left + this.margin.right)
                 .attr('height', this.height + this.margin.top + this.margin.bottom);
-            this.xAxis = this.svgSelection.append('g');
-            this.yAxis = this.svgSelection.append('g');
-            this.barChart = this.svgSelection.append('g');
-            this.slider = this.svgSelection.append('g');
+            this.xAxis = this.chart.append('g');
+            this.yAxis = this.chart.append('g');
+            this.barsContainer = this.chart.append('g');
+            this.slider = d3.select('.slider')
+                .style('margin-left', this.margin.left)
+                .attr('width', this.width)
+                .attr('height', this.sliderHeight)
             this.renderAxises();
             this.renderBars();
             this.renderSlider();
@@ -112,7 +119,7 @@ export default defineComponent({
             const diffMoreThan5Years = diff >= 5 * YEAR_IN_MILLISECONDS;
             const diffMoreThan45Days = diff >= 1.5 * MONTH_IN_MILLISECONDS;
             const diffMoreThan36Hours = diff >= 1.5 * DAY_IN_MILLISECONDS;
-            this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.ticksCount).tickFormat((d: Date) => {
+            this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.width / 120).tickFormat((d: Date) => {
                 if (diffMoreThan5Years) return moment(d).locale('ru-RU').format('YYYY');
                 if (diffMoreThan45Days) return moment(d).locale('ru-RU').format('MM.YYYY');
                 if (diffMoreThan36Hours) return moment(d).locale('ru-RU').format('DD.MM');
@@ -127,7 +134,7 @@ export default defineComponent({
         },
         renderBars(): void {
             const t = d3.transition().duration(750).ease(d3.easePoly);
-            this.barChart?.selectAll('.bar')
+            this.barsContainer?.selectAll('.bar')
                 .data(this.data.filter(d => d.date <= new Date()), (data: StatisticsDatum) => data.date)
                 .join(
                     enter => enter.append('rect').classed('bar', true).attr('y', this.height).attr('x', data => this.x(data.date)),
@@ -140,14 +147,17 @@ export default defineComponent({
                     .attr('x', (elem) => this.x(elem.date) - this.xBandwidth / 2)
                     .attr('y', (datum) => this.y(datum.upper))
                 );
-            this.barChart?.selectAll('.bar')
+            this.barsContainer?.selectAll('.bar')
                 .on('mouseover', this.mouseoverBar)
                 .on('mousemove', this.mousemoveBar)
                 .on('mouseleave', this.mouseleaveBar);
-            this.barChart?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);            
+            this.barsContainer?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);            
         },
         renderSlider(): void {
-            // todo
+            const defaultSelection = [this.x(d3.utcYear.offset(this.x.domain()[1], -1)), this.x.range()[1]]
+            this.slider?.append('g')
+                .call(this.brush)
+                .call(this.brush.move, defaultSelection);
         },
         initTooltip(): void {
             this.tooltip = d3.select('.tooltip');
@@ -183,14 +193,14 @@ export default defineComponent({
             this.renderBars();
             this.renderAxises();
         },
+        onBrush(): void {
+            // todo
+        },
+        onBrushEnd(): void {
+            // todo
+        },
     },
     computed: {
-        x(): d3.ScaleTime<number, number, never> {
-            const xScale = d3.scaleUtc()
-                .range([0, this.width])
-                .domain([this.startDate ?? +new Date() - 1000, new Date()]);
-            return this.data.length > 10 ? xScale : xScale.nice();
-        },
         xBandwidth(): number {
             let prev: StatisticsDatum | undefined;
             const minimalDiff = this.data.reduce((acc, elem) => {
@@ -206,13 +216,22 @@ export default defineComponent({
             const diffFactor = d3.median([this.data.length / PARSED_DATA.length, 1]) ?? 0.5; // coefficient for convenient bar width
             return d3.min([minimalDiff * diffFactor, MAXIMUM_BAR_WIDTH]) ?? MAXIMUM_BAR_WIDTH;
         },
+        x(): d3.ScaleTime<number, number, never> {
+            const xScale = d3.scaleUtc()
+                .range([0, this.width])
+                .domain([this.startDate ?? +new Date() - 1000, new Date()]);
+            return this.data.length > 10 ? xScale : xScale.nice();
+        },
         y(): d3.ScaleLinear<number, number, never> {
             return d3.scaleLinear()
                 .range([this.height, this.margin.top])
                 .domain([0, d3.max(this.data, datum => datum.upper) ?? 10]);
         },
-        ticksCount(): number {
-            return this.width / 120;
+        brush(): BrushBehavior<StatisticsDatum> {
+            return d3.brushX<StatisticsDatum>()
+                .extent([[this.margin.left, 0], [this.width - this.margin.right, this.sliderHeight]])
+                .on('brush', this.onBrush)
+                .on('end', this.onBrushEnd);
         },
     }
 });

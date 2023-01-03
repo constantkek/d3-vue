@@ -97,7 +97,7 @@ export default defineComponent({
         renderAxises(): void {
             this.yAxis?.classed('y-axis', true)
                 .call(d3.axisLeft(this.y).tickSizeOuter(0).ticks(this.height / 40))
-                    .attr('transform', `translate(${this.margin.left},0)`)
+                    .attr('transform', `translate(${this.margin.left - 3},0)`)
                 .call(g => {
                     g.selectAll('.tick .copy').remove();
                     g.selectAll('.tick line').clone()
@@ -106,7 +106,7 @@ export default defineComponent({
                         .classed('copy', d => d !== 1);
                 });
             this.xAxis?.classed('x-axis', true)
-                .attr('transform', `translate(${this.margin.left},${this.height})`);
+                .attr('transform', `translate(${this.margin.left},${this.height + 3})`);
             const [firstDate, lastDate] = this.x.domain();
             const diff = +lastDate - +firstDate;
             const diffMoreThan5Years = diff >= 5 * YEAR_IN_MILLISECONDS;
@@ -122,6 +122,8 @@ export default defineComponent({
                     sameElse: 'HH:mm',
                 });
             }));
+            this.xAxis?.select('.domain').remove();
+            this.yAxis?.select('.domain').remove();
         },
         renderBars(): void {
             const t = d3.transition().duration(750).ease(d3.easePoly);
@@ -137,7 +139,6 @@ export default defineComponent({
                     .attr('height', data => this.height - this.y(data.upper))
                     .attr('x', (elem) => this.x(elem.date) - this.xBandwidth / 2)
                     .attr('y', (datum) => this.y(datum.upper))
-                    .attr('fill', '#6c8191')
                 );
             this.barChart?.selectAll('.bar')
                 .on('mouseover', this.mouseoverBar)
@@ -224,6 +225,10 @@ export default defineComponent({
 }
 .bar {
     cursor: pointer;
+    fill: #6c8191;
+    stroke-width: 2;
+    stroke-opacity: 0;
+    stroke: #6c8191;
     &:hover {
         fill: #4fa292;
     }

@@ -193,6 +193,11 @@ export default defineComponent({
             if (selection) {
                 console.log('yes');
             } else {
+                const leftIndex = null;
+                const rightIndex = null;
+                this.data = PARSED_DATA.filter((_, i) => {
+                    return length / i > 5;
+                })
                 console.log('no');
             }
             console.log(selection);

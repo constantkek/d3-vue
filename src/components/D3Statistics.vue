@@ -18,7 +18,7 @@ import moment from 'moment';
 import * as d3 from 'd3';
 
 import dataJson from '@/assets/aapl-bollinger.json';
-import { BrushBehavior } from 'd3';
+import { BrushBehavior, D3BrushEvent } from 'd3';
 
 interface StatisticsDatum {
     date: Date,
@@ -51,9 +51,6 @@ interface ComponentData {
 type D3Selection = d3.Selection<any, any, any, any>;
 
 const PARSED_DATA = dataJson.map((elem: StatisticsDatum) => ({ ...elem, date: new Date(elem.date) })) as StatisticsDatum[];
-const DAY_IN_MILLISECONDS = 1000 * 60 * 60 * 24;
-const MONTH_IN_MILLISECONDS = DAY_IN_MILLISECONDS * 31;
-const YEAR_IN_MILLISECONDS = DAY_IN_MILLISECONDS * 365;
 const MAXIMUM_BAR_WIDTH = 80;
 
 export default defineComponent({
@@ -115,10 +112,9 @@ export default defineComponent({
             this.xAxis?.classed('x-axis', true)
                 .attr('transform', `translate(${this.margin.left},${this.height + 3})`);
             const [firstDate, lastDate] = this.x.domain();
-            const diff = +lastDate - +firstDate;
-            const diffMoreThan5Years = diff >= 5 * YEAR_IN_MILLISECONDS;
-            const diffMoreThan45Days = diff >= 1.5 * MONTH_IN_MILLISECONDS;
-            const diffMoreThan36Hours = diff >= 1.5 * DAY_IN_MILLISECONDS;
+            const diffMoreThan5Years = d3.utcYear.offset(lastDate, -5) > firstDate;
+            const diffMoreThan45Days = d3.utcMonth.offset(lastDate, -1.5) > firstDate;
+            const diffMoreThan36Hours = d3.utcDay.offset(lastDate, -1.5) > firstDate;
             this.xAxis?.call(d3.axisBottom(this.x).tickSizeOuter(0).ticks(this.width / 120).tickFormat((d: Date) => {
                 if (diffMoreThan5Years) return moment(d).locale('ru-RU').format('YYYY');
                 if (diffMoreThan45Days) return moment(d).locale('ru-RU').format('MM.YYYY');
@@ -154,10 +150,9 @@ export default defineComponent({
             this.barsContainer?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);            
         },
         renderSlider(): void {
-            const defaultSelection = [this.x(d3.utcYear.offset(this.x.domain()[1], -1)), this.x.range()[1]]
             this.slider?.append('g')
                 .call(this.brush)
-                .call(this.brush.move, defaultSelection);
+                .call(this.brush.move, this.defaultBrushRange);
         },
         initTooltip(): void {
             this.tooltip = d3.select('.tooltip');
@@ -193,11 +188,14 @@ export default defineComponent({
             this.renderBars();
             this.renderAxises();
         },
-        onBrush(): void {
+        onBrushEnd({ selection }: D3BrushEvent<StatisticsDatum>): void {
             // todo
-        },
-        onBrushEnd(): void {
-            // todo
+            if (selection) {
+                console.log('yes');
+            } else {
+                console.log('no');
+            }
+            console.log(selection);
         },
     },
     computed: {
@@ -227,12 +225,19 @@ export default defineComponent({
                 .range([this.height, this.margin.top])
                 .domain([0, d3.max(this.data, datum => datum.upper) ?? 10]);
         },
+        brushX(): d3.ScaleTime<number, number, never> {
+            return d3.scaleUtc()
+                .range([0, this.width])
+                .domain([this.data[0].date ?? +new Date() - 1000, new Date()]);
+        },
         brush(): BrushBehavior<StatisticsDatum> {
             return d3.brushX<StatisticsDatum>()
-                .extent([[this.margin.left, 0], [this.width - this.margin.right, this.sliderHeight]])
-                .on('brush', this.onBrush)
+                .extent([[0, 0], [this.width, this.sliderHeight]])
                 .on('end', this.onBrushEnd);
         },
+        defaultBrushRange(): number[] {
+            return [this.width / 2, this.width];
+        }
     }
 });
 </script>

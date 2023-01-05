@@ -34,6 +34,7 @@ interface ComponentData {
     xAxis?: D3Selection,
     yAxis?: D3Selection,
     slider?: D3Selection,
+    gBrush?: D3Selection,
     tooltip?: D3Selection,
     data: StatisticsDatum[],
     margin: {
@@ -46,9 +47,14 @@ interface ComponentData {
     height: number,
     sliderHeight: number,
     startDate?: Date,
+    endDate?: Date,
 }
 
 type D3Selection = d3.Selection<any, any, any, any>;
+enum RenderType {
+    SMOOTH = 'smooth',
+    INSTANT = 'instant',
+}
 
 const PARSED_DATA = dataJson.map((elem: StatisticsDatum) => ({ ...elem, date: new Date(elem.date) })) as StatisticsDatum[];
 const MAXIMUM_BAR_WIDTH = 80;
@@ -62,10 +68,11 @@ export default defineComponent({
             xAxis: undefined,
             yAxis: undefined,
             slider: undefined,
+            gBrush: undefined,
             tooltip: undefined,
             data: [],
             margin: {
-                left: 30,
+                left: 65,
                 right: 50,
                 top: 10,
                 bottom: 30,
@@ -74,11 +81,13 @@ export default defineComponent({
             height: 410,
             sliderHeight: 60,
             startDate: undefined,
+            endDate: undefined,
         };
     },
     mounted() {
         this.data = PARSED_DATA;
         this.startDate = this.data[0].date;
+        this.endDate = this.data[this.data.length - 1].date;
         this.init();
     },
     methods: {
@@ -92,21 +101,26 @@ export default defineComponent({
             this.slider = d3.select('.slider')
                 .style('margin-left', this.margin.left)
                 .attr('width', this.width)
-                .attr('height', this.sliderHeight)
-            this.renderAxises();
-            this.renderBars();
-            this.renderSlider();
+                .attr('height', this.sliderHeight);
+            this.gBrush = this.slider.append('g');
+            this.initSlider();
+            this.updateChart(RenderType.INSTANT);
             this.initTooltip();
+        },
+        updateChart(renderType: RenderType = RenderType.SMOOTH): void {
+            this.renderAxises();
+            this.renderBars(renderType);
         },
         renderAxises(): void {
             this.yAxis?.classed('y-axis', true)
                 .call(d3.axisLeft(this.y).tickSizeOuter(0).ticks(this.height / 40))
-                    .attr('transform', `translate(${this.margin.left - 3},0)`)
+                    .attr('transform', `translate(${this.margin.left - MAXIMUM_BAR_WIDTH / 2},0)`)
                 .call(g => {
                     g.selectAll('.tick .copy').remove();
                     g.selectAll('.tick line').clone()
                         .attr('stroke-opacity', 0.15)
-                        .attr('x2', this.width)
+                        .attr('x1', 10)
+                        .attr('x2', this.width + this.margin.left)
                         .classed('copy', d => d !== 1);
                 });
             this.xAxis?.classed('x-axis', true)
@@ -128,10 +142,11 @@ export default defineComponent({
             this.xAxis?.select('.domain').remove();
             this.yAxis?.select('.domain').remove();
         },
-        renderBars(): void {
-            const t = d3.transition().duration(750).ease(d3.easePoly);
+        renderBars(renderType: RenderType): void {
+            const duration = renderType === RenderType.SMOOTH ? 750 : 0;
+            const t = d3.transition().duration(duration).ease(d3.easePoly);
             this.barsContainer?.selectAll('.bar')
-                .data(this.data.filter(d => d.date <= new Date()), (data: StatisticsDatum) => data.date)
+                .data(this.data, (data: StatisticsDatum) => data.date)
                 .join(
                     enter => enter.append('rect').classed('bar', true).attr('y', this.height).attr('x', data => this.x(data.date)),
                     update => update,
@@ -149,8 +164,8 @@ export default defineComponent({
                 .on('mouseleave', this.mouseleaveBar);
             this.barsContainer?.transition(t).attr('transform', `translate(${this.margin.left}, 0)`);            
         },
-        renderSlider(): void {
-            this.slider?.append('g')
+        initSlider(): void {
+            this.gBrush?.classed('slider', true)
                 .call(this.brush)
                 .call(this.brush.move, this.defaultBrushRange);
         },
@@ -172,6 +187,7 @@ export default defineComponent({
         },
         onButtonClick(days: number): void {
             // filter values between selected date and current date
+            // todo handle brush
             const dateOffset = (24 * 60 * 60 * 1000) * days;
             const timeAgoDate = new Date();
             timeAgoDate.setTime(new Date().getTime() - dateOffset);
@@ -179,28 +195,37 @@ export default defineComponent({
                 return elem.date > timeAgoDate && elem.date < new Date();
             });
             this.startDate = timeAgoDate;
-            this.renderBars();
-            this.renderAxises();
+            this.endDate = new Date();
+            this.updateChart();
         },
         showAll(): void {
+            // todo handle brush
             this.data = PARSED_DATA;
             this.startDate = this.data[0].date;
-            this.renderBars();
-            this.renderAxises();
+            this.endDate = this.data[this.data.length - 1].date;
+            this.updateChart();
+        },
+        onBrush({ selection }: D3BrushEvent<StatisticsDatum>): void {
+            if (!selection) {
+                return;
+            }
+            const [leftSelection, rightSelection] = selection as number[];
+            const leftIndex = +this.interpolateFunc(leftSelection / this.brushX.range()[1]).toFixed();
+            const rightIndex = +this.interpolateFunc(rightSelection / this.brushX.range()[1]).toFixed();
+            this.data = PARSED_DATA.slice(leftIndex, rightIndex);
+            this.startDate = this.data[0].date;
+            this.endDate = this.data[this.data.length - 1].date;
+            this.updateChart(RenderType.INSTANT);
         },
         onBrushEnd({ selection }: D3BrushEvent<StatisticsDatum>): void {
-            // todo
             if (selection) {
-                console.log('yes');
-            } else {
-                const leftIndex = null;
-                const rightIndex = null;
-                this.data = PARSED_DATA.filter((_, i) => {
-                    return length / i > 5;
-                })
-                console.log('no');
+                return;
             }
-            console.log(selection);
+            this.gBrush?.call(this.brush.move, this.defaultBrushRange);
+            this.data = PARSED_DATA.slice(this.interpolateFunc(0.5), this.interpolateFunc(1));
+            this.startDate = this.data[0].date;
+            this.endDate = this.data[this.data.length - 1].date;
+            this.updateChart();
         },
     },
     computed: {
@@ -222,7 +247,7 @@ export default defineComponent({
         x(): d3.ScaleTime<number, number, never> {
             const xScale = d3.scaleUtc()
                 .range([0, this.width])
-                .domain([this.startDate ?? +new Date() - 1000, new Date()]);
+                .domain([this.startDate ?? +new Date() - 1000, this.endDate ?? +new Date()]);
             return this.data.length > 10 ? xScale : xScale.nice();
         },
         y(): d3.ScaleLinear<number, number, never> {
@@ -233,16 +258,20 @@ export default defineComponent({
         brushX(): d3.ScaleTime<number, number, never> {
             return d3.scaleUtc()
                 .range([0, this.width])
-                .domain([this.data[0].date ?? +new Date() - 1000, new Date()]);
+                .domain([PARSED_DATA[0].date ?? +new Date() - 1000, PARSED_DATA[PARSED_DATA.length - 1].date ?? +new Date()]);
         },
         brush(): BrushBehavior<StatisticsDatum> {
             return d3.brushX<StatisticsDatum>()
                 .extent([[0, 0], [this.width, this.sliderHeight]])
+                .on('brush', this.onBrush)
                 .on('end', this.onBrushEnd);
         },
         defaultBrushRange(): number[] {
             return [this.width / 2, this.width];
-        }
+        },
+        interpolateFunc(): (t: number) => number {
+            return d3.interpolate(0, PARSED_DATA.length - 1);
+        },
     }
 });
 </script>

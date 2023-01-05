@@ -179,7 +179,7 @@ export default defineComponent({
         mousemoveBar(event: MouseEvent): void {
             const data: StatisticsDatum = (event.target as any).__data__;
             this.tooltip?.html(`<div>${moment(data.date).format('DD.MM.YYYY HH:mm:ss')}<br><span class='tooltip-value'>${data.upper.toFixed()}</span> записей</div>`)
-                .style('left', (d3.pointer(event, event.target)[0]) - 11 + 'px')
+                .style('left', (d3.pointer(event, event.target)[0]) + 24 + 'px')
                 .style('top', (d3.pointer(event, event.target)[1] - 25) + 'px')
         },
         mouseleaveBar(): void {
